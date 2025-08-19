@@ -5,6 +5,7 @@ use std::{
     ffi::{c_void, CString, OsStr},
     mem::{size_of, zeroed},
     ptr::{null, null_mut},
+    os::raw::c_char,
 };
 
 #[cfg(windows)]

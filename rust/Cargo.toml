@@ -14,6 +14,6 @@ libc = "0.2.153"
 winapi = { version = "0.3.9", features = [
     "winspool", "winuser", "handleapi", "errhandlingapi",
     "memoryapi", "libloaderapi", "fileapi", "std", "processthreadsapi",
-    "minwindef", "windef", "basetsd", "winnt"
+    "minwindef", "windef", "basetsd", "winnt", "combaseapi"
 ] }
 log = "0.4.20"

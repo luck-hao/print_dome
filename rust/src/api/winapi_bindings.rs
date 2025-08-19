@@ -1,13 +1,20 @@
 use std::ffi::c_void;
-use winapi::shared::minwindef::{BOOL, DWORD, INT, WORD};
-use winapi::shared::windef::{HWND, LRESULT};
+use winapi::shared::minwindef::{BOOL, DWORD, INT, WORD, LRESULT};
+use winapi::shared::windef::HWND;
 use winapi::shared::basetsd::{UINT_PTR, ULONG_PTR};
 use winapi::um::winnt::HANDLE;
+use winapi::ctypes::c_char;
 
 // Type aliases for Windows API
 pub type UINT = u32;
 pub type WPARAM = UINT_PTR;
 pub type LPARAM = ULONG_PTR;
+
+// Re-export important types for easy access
+pub use winapi::shared::minwindef::{BOOL, DWORD, INT, WORD, LRESULT};
+pub use winapi::shared::windef::HWND;
+pub use winapi::shared::basetsd::{UINT_PTR, ULONG_PTR};
+pub use winapi::um::winnt::HANDLE;
 
 // -------------------------- 核心结构体绑定 --------------------------
 /// 打印机默认配置（对应 C# structPrinterDefaults）
@@ -115,9 +122,9 @@ pub struct PRINTER_INFO_9W {
 /// 打印文档信息（对应 C# DOCINFOA）
 #[repr(C)]
 pub struct DOC_INFO_1A {
-    pub pDocName: *const i8,  // 文档名称（ANSI）
-    pub pOutputFile: *const i8, // 输出文件（NULL 表示打印到打印机）
-    pub pDataType: *const i8,  // 数据类型（RAW）
+    pub pDocName: *const c_char,  // 文档名称（ANSI）
+    pub pOutputFile: *const c_char, // 输出文件（NULL 表示打印到打印机）
+    pub pDataType: *const c_char,  // 数据类型（RAW）
 }
 
 // -------------------------- Windows API 函数绑定 --------------------------
@@ -219,30 +226,10 @@ extern "system" {
     ) -> BOOL;
 }
 
-// Additional Windows API functions from other modules
-#[link(name = "user32")]
-extern "system" {
-    pub fn SendMessageTimeoutW(
-        hWnd: HWND,
-        Msg: UINT,
-        wParam: WPARAM,
-        lParam: LPARAM,
-        fuFlags: UINT,
-        uTimeout: UINT,
-        lpdwResult: *mut DWORD,
-    ) -> LRESULT;
-}
-
-#[link(name = "kernel32")]
-extern "system" {
-    pub fn GetLastError() -> DWORD;
-}
-
-#[link(name = "ole32")]
-extern "system" {
-    pub fn CoTaskMemAlloc(cb: u32) -> *mut c_void;
-    pub fn CoTaskMemFree(pv: *mut c_void);
-}
+// Use functions from winapi crate instead of redefining them
+pub use winapi::um::errhandlingapi::GetLastError;
+pub use winapi::um::combaseapi::{CoTaskMemAlloc, CoTaskMemFree};
+pub use winapi::um::winuser::SendMessageTimeoutW;
 
 // -------------------------- 常量定义 --------------------------
 pub const PRINTER_ACCESS_ADMINISTER: DWORD = 0x00000004;
@@ -254,3 +241,7 @@ pub const HWND_BROADCAST: HWND = 0xFFFF as HWND;
 pub const SMTO_NORMAL: UINT = 0x0000;
 pub const PRINTER_ENUM_LOCAL: DWORD = 0x00000002;
 pub const PRINTER_ENUM_CONNECTIONS: DWORD = 0x00000004;
+
+// Re-export winapi constants that are commonly used
+pub use winapi::um::winuser::{HWND_BROADCAST as HWND_BROADCAST_CONST, WM_SETTINGCHANGE as WM_SETTINGCHANGE_CONST};
+pub use winapi::um::winuser::SMTO_NORMAL;
