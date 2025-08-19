@@ -1,5 +1,13 @@
-use libc::{c_void, HANDLE, HWND, LPARAM, LRESULT, UINT, WPARAM};
+use std::ffi::c_void;
 use winapi::shared::minwindef::{BOOL, DWORD, INT, WORD};
+use winapi::shared::windef::{HWND, LRESULT};
+use winapi::shared::basetsd::{UINT_PTR, ULONG_PTR};
+use winapi::um::winnt::HANDLE;
+
+// Type aliases for Windows API
+pub type UINT = u32;
+pub type WPARAM = UINT_PTR;
+pub type LPARAM = ULONG_PTR;
 
 // -------------------------- 核心结构体绑定 --------------------------
 /// 打印机默认配置（对应 C# structPrinterDefaults）
@@ -113,7 +121,7 @@ pub struct DOC_INFO_1A {
 }
 
 // -------------------------- Windows API 函数绑定 --------------------------
-#[link(name = "winspool.drv")]
+#[link(name = "winspool")]
 extern "system" {
     // 打开打印机
     pub fn OpenPrinterW(
@@ -209,6 +217,31 @@ extern "system" {
         cbBuf: DWORD,
         pcWritten: *mut DWORD,
     ) -> BOOL;
+}
+
+// Additional Windows API functions from other modules
+#[link(name = "user32")]
+extern "system" {
+    pub fn SendMessageTimeoutW(
+        hWnd: HWND,
+        Msg: UINT,
+        wParam: WPARAM,
+        lParam: LPARAM,
+        fuFlags: UINT,
+        uTimeout: UINT,
+        lpdwResult: *mut DWORD,
+    ) -> LRESULT;
+}
+
+#[link(name = "kernel32")]
+extern "system" {
+    pub fn GetLastError() -> DWORD;
+}
+
+#[link(name = "ole32")]
+extern "system" {
+    pub fn CoTaskMemAlloc(cb: u32) -> *mut c_void;
+    pub fn CoTaskMemFree(pv: *mut c_void);
 }
 
 // -------------------------- 常量定义 --------------------------

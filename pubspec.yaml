@@ -41,7 +41,7 @@ dependencies:
   hooks_riverpod: ^2.4.3
   freezed_annotation: ^2.2.0
   # pdf_render: ^2.1.0
-  file_picker: ^5.3.3
+  # file_picker: ^5.3.3
   path_provider: ^2.0.15
   syncfusion_flutter_pdfviewer: ^23.1.40
   uuid: ^4.5.1

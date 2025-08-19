@@ -1,14 +1,15 @@
-mod winapi_bindings;
+use crate::api::winapi_bindings::*;
 
 // use flutter_rust_bridge::frb;
 use std::{
     ffi::{c_void, CString, OsStr},
     mem::{size_of, zeroed},
-    os::windows::prelude::OsStrExt,
     ptr::{null, null_mut},
 };
+
+#[cfg(windows)]
+use std::os::windows::prelude::OsStrExt;
 use thiserror::Error;
-use winapi_bindings::*;
 
 // -------------------------- 错误定义 --------------------------
 #[derive(Error, Debug, Clone, PartialEq)]
@@ -42,7 +43,7 @@ impl From<PrinterError> for String {
 // -------------------------- 工具函数 --------------------------
 /// 获取 Windows 最后错误码
 fn get_last_error() -> u32 {
-    unsafe { winapi::um::errhandlingapi::GetLastError() }
+    unsafe { GetLastError() }
 }
 
 /// UTF-8 字符串转 UTF-16 宽字符（带 null 终止符）
@@ -68,12 +69,12 @@ unsafe fn utf16_ptr_to_str(ptr: *const u16) -> Option<String> {
 
 /// 分配 CoTask 内存
 unsafe fn alloc_cotask_mem(size: usize) -> *mut c_void {
-    winapi::um::combaseapi::CoTaskMemAlloc(size as u32)
+    CoTaskMemAlloc(size as u32)
 }
 
 /// 释放 CoTask 内存
 unsafe fn free_cotask_mem(ptr: *mut c_void) {
-    winapi::um::combaseapi::CoTaskMemFree(ptr);
+    CoTaskMemFree(ptr);
 }
 
 // -------------------------- 核心功能实现 --------------------------
