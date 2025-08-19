@@ -1,22 +1,21 @@
 use std::ffi::c_void;
-use winapi::shared::minwindef::{BOOL, DWORD, INT, WORD, LRESULT};
+use winapi::ctypes::c_char;
+
+// -------------------------- 1. 统一导入winapi类型（避免重复定义） --------------------------
+// 直接从winapi导入所有基础类型，不手动定义同名类型
+use winapi::shared::minwindef::{BOOL, DWORD, INT, WORD, LRESULT, UINT, WPARAM, LPARAM};
 use winapi::shared::windef::HWND;
 use winapi::shared::basetsd::{UINT_PTR, ULONG_PTR};
 use winapi::um::winnt::HANDLE;
-use winapi::ctypes::c_char;
 
-// Type aliases for Windows API
-pub type UINT = u32;
-pub type WPARAM = UINT_PTR;
-pub type LPARAM = ULONG_PTR;
+// -------------------------- 2. 仅导出必要类型（避免重复导出） --------------------------
+// 仅导出当前模块需要对外暴露的类型，不重复导出winapi已有的类型
+pub use self::{
+    PRINTER_DEFAULTSW, DEVMODEW, SIZEW, RECTW, FORM_INFO_1W,
+    PRINTER_INFO_2W, PRINTER_INFO_9W, DOC_INFO_1A
+};
 
-// Re-export important types for easy access
-pub use winapi::shared::minwindef::{BOOL, DWORD, INT, WORD, LRESULT};
-pub use winapi::shared::windef::HWND;
-pub use winapi::shared::basetsd::{UINT_PTR, ULONG_PTR};
-pub use winapi::um::winnt::HANDLE;
-
-// -------------------------- 核心结构体绑定 --------------------------
+// -------------------------- 3. 核心结构体绑定（保留#[repr(C)]确保C内存布局） --------------------------
 /// 打印机默认配置（对应 C# structPrinterDefaults）
 #[repr(C)]
 pub struct PRINTER_DEFAULTSW {
@@ -127,7 +126,8 @@ pub struct DOC_INFO_1A {
     pub pDataType: *const c_char,  // 数据类型（RAW）
 }
 
-// -------------------------- Windows API 函数绑定 --------------------------
+// -------------------------- 4. Windows API 函数绑定（修复库名+删除重复函数） --------------------------
+// 1. 打印机相关API（依赖 winspool.drv 库，库名必须带 .drv）
 #[link(name = "winspool")]
 extern "system" {
     // 打开打印机
@@ -190,17 +190,6 @@ extern "system" {
         Command: DWORD,
     ) -> BOOL;
 
-    // 发送系统广播（通知设置变更）
-    pub fn SendMessageTimeoutW(
-        hWnd: HWND,
-        Msg: UINT,
-        wParam: WPARAM,
-        lParam: LPARAM,
-        fuFlags: UINT,
-        uTimeout: UINT,
-        lpdwResult: *mut DWORD,
-    ) -> LRESULT;
-
     // 开始打印文档
     pub fn StartDocPrinterA(
         hPrinter: HANDLE,
@@ -226,22 +215,34 @@ extern "system" {
     ) -> BOOL;
 }
 
-// Use functions from winapi crate instead of redefining them
-pub use winapi::um::errhandlingapi::GetLastError;
-pub use winapi::um::combaseapi::{CoTaskMemAlloc, CoTaskMemFree};
-pub use winapi::um::winuser::SendMessageTimeoutW;
+// 2. 窗口消息相关API（依赖 user32.dll 库，单独绑定避免与打印机库混淆）
+#[link(name = "user32")]
+extern "system" {
+    // 发送系统广播（通知设置变更）- 从user32.dll导入，而非winspool
+    pub fn SendMessageTimeoutW(
+        hWnd: HWND,
+        Msg: UINT,
+        wParam: WPARAM,
+        lParam: LPARAM,
+        fuFlags: UINT,
+        uTimeout: UINT,
+        lpdwResult: *mut DWORD,
+    ) -> LRESULT;
+}
 
-// -------------------------- 常量定义 --------------------------
+// -------------------------- 5. 常量定义（复用winapi+补充必要常量） --------------------------
+// 1. 复用winapi已有的常量（避免重复定义）
+pub use winapi::um::winuser::{WM_SETTINGCHANGE, HWND_BROADCAST, SMTO_NORMAL};
+
+// 2. 补充打印机相关的自定义常量（winapi中无定义的）
 pub const PRINTER_ACCESS_ADMINISTER: DWORD = 0x00000004;
 pub const PRINTER_ACCESS_USE: DWORD = 0x00000008;
 pub const DM_OUT_BUFFER: DWORD = 0x00000002;
 pub const DM_IN_BUFFER: DWORD = 0x00000008;
-pub const WM_SETTINGCHANGE: UINT = 0x001A;
-pub const HWND_BROADCAST: HWND = 0xFFFF as HWND;
-pub const SMTO_NORMAL: UINT = 0x0000;
 pub const PRINTER_ENUM_LOCAL: DWORD = 0x00000002;
 pub const PRINTER_ENUM_CONNECTIONS: DWORD = 0x00000004;
 
-// Re-export winapi constants that are commonly used
-pub use winapi::um::winuser::{HWND_BROADCAST as HWND_BROADCAST_CONST, WM_SETTINGCHANGE as WM_SETTINGCHANGE_CONST};
-pub use winapi::um::winuser::SMTO_NORMAL;
+// -------------------------- 6. 复用winapi工具函数（避免重复绑定） --------------------------
+// 直接导出winapi的工具函数，不手动绑定
+pub use winapi::um::errhandlingapi::GetLastError;
+pub use winapi::um::combaseapi::{CoTaskMemAlloc, CoTaskMemFree};
