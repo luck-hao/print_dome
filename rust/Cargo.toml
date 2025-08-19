@@ -1,0 +1,16 @@
+[package]
+name = "rust_lib_yhd_service_print_dome"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+flutter_rust_bridge = "=2.11.1"
+tokio = { version = "1.36.0", features = ["full"] }
+winapi = { version = "0.3.9", features = [
+    "winspool", "winuser", "handleapi", "errhandlingapi",
+    "memoryapi", "libloaderapi", "fileapi", "std", "processthreadsapi"
+] }
+libc = "0.2.153"
+thiserror = "2.0.15"
+encoding_rs = "0.8.34"  # 处理 ANSI 编码（对应 C# StringToCoTaskMemAnsi）
+log = "0.4.20"
