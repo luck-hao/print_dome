@@ -7,15 +7,18 @@ use flutter_rust_bridge::frb;
 use std::{
     ffi::{c_void, CString, OsStr},
     mem::{size_of, zeroed},
-    os::raw::c_char,
     ptr::{null, null_mut},
 };
-// 仅在 Windows 平台启用 Windows 扩展特性（避免非 Windows 编译错误）
 #[cfg(windows)]
 use std::os::windows::prelude::OsStrExt;
 use thiserror::Error;
-// 补充 encoding_rs 依赖（发送字符串打印需用到）
 use encoding_rs;
+
+#[cfg(windows)]
+use windows::{
+    core::{PCWSTR, PSTR},
+    Win32::Foundation::HANDLE,
+};
 
 // -------------------------- 错误定义 --------------------------
 #[derive(Error, Debug, Clone, PartialEq)]
@@ -61,8 +64,22 @@ fn get_last_error() -> u32 {
 fn str_to_utf16(s: &str) -> Vec<u16> {
     OsStr::new(s)
         .encode_wide()
-        .chain(Some(0)) // 添加 null 终止符
+        .chain(Some(0))
         .collect()
+}
+
+/// 字符串转 PCWSTR
+#[cfg(windows)]
+fn str_to_pcwstr(s: &str) -> windows::core::Result<PCWSTR> {
+    let utf16 = str_to_utf16(s);
+    Ok(PCWSTR(utf16.as_ptr()))
+}
+
+/// 字符串转 PSTR
+#[cfg(windows)]
+fn str_to_pstr(s: &str) -> windows::core::Result<PSTR> {
+    let cstring = CString::new(s).map_err(|_| windows::core::Error::from_win32())?;
+    Ok(PSTR(cstring.as_ptr() as *mut u8))
 }
 
 /// UTF-16 宽字符指针转 UTF-8 字符串（仅 Windows 可用）
@@ -83,11 +100,10 @@ unsafe fn utf16_ptr_to_str(ptr: *const u16) -> Option<String> {
 /// 分配 CoTask 内存（仅 Windows 可用）
 #[cfg(windows)]
 unsafe fn alloc_cotask_mem(size: usize) -> *mut c_void {
-    // 检查 size 合理性（避免内存溢出）
-    if size > 1024 * 1024 * 100 { // 限制最大 100MB
+    if size > 1024 * 1024 * 100 {
         return null_mut();
     }
-    CoTaskMemAlloc(size as u32)
+    CoTaskMemAlloc(size)
 }
 
 /// 释放 CoTask 内存（仅 Windows 可用）
@@ -108,15 +124,17 @@ pub fn get_printer_list() -> Result<Vec<String>, PrinterError> {
         let mut c_returned = 0;
 
         // 第一步：获取所需缓冲区大小
-        let success = EnumPrintersW(
-            PRINTER_ENUM_LOCAL | PRINTER_ENUM_CONNECTIONS,
-            null(),
-            2, // PRINTER_INFO_2W
-            null_mut(),
-            0,
-            &mut cb_needed,
-            &mut c_returned,
-        );
+        let success = unsafe {
+            EnumPrintersW(
+                PRINTER_ENUM_LOCAL | PRINTER_ENUM_CONNECTIONS,
+                PCWSTR::null(),
+                2,
+                None,
+                0,
+                &mut cb_needed,
+                &mut c_returned,
+            )
+        };
         // 122 = ERROR_INSUFFICIENT_BUFFER（缓冲区不足，正常情况）
         if success == 0 && get_last_error() != 122 {
             return Err(PrinterError::WinApiError {
@@ -135,15 +153,17 @@ pub fn get_printer_list() -> Result<Vec<String>, PrinterError> {
         let buf_ptr = buf.as_mut_ptr();
 
         // 第二步：获取打印机信息
-        let success = EnumPrintersW(
-            PRINTER_ENUM_LOCAL | PRINTER_ENUM_CONNECTIONS,
-            null(),
-            2,
-            buf_ptr,
-            cb_needed,
-            &mut cb_needed,
-            &mut c_returned,
-        );
+        let success = unsafe {
+            EnumPrintersW(
+                PRINTER_ENUM_LOCAL | PRINTER_ENUM_CONNECTIONS,
+                PCWSTR::null(),
+                2,
+                Some(buf_ptr),
+                cb_needed,
+                &mut cb_needed,
+                &mut c_returned,
+            )
+        };
         if success == 0 {
             return Err(PrinterError::WinApiError {
                 func: "EnumPrintersW (2nd call)",
@@ -440,7 +460,7 @@ pub fn add_custom_paper(
                     devmode.dmFormName[i] = c;
                 }
                 devmode.dmFormName[31] = 0; // 确保 null 终止
-                Marshal::structure_to_ptr(devmode, devmode_ptr as *mut c_void, true);
+                *devmode_ptr = devmode;
 
                 // 5. 更新 DEVMODE 到打印机
                 let success = DocumentPropertiesW(
@@ -593,24 +613,20 @@ pub fn send_bytes_to_printer(printer_name: &str, bytes: &[u8]) -> Result<(), Pri
 
         // 确保资源释放（打印流程需严格释放）
         let result = (|| {
-            // 构建 DOC_INFO_1A（ANSI 编码）
-            let doc_name = CString::new("Flutter-Rust RAW Document").map_err(|_| {
-                PrinterError::EncodingError
-            })?;
-            let data_type = CString::new("RAW").map_err(|_| {
-                PrinterError::EncodingError
-            })?;
-            let doc_info = DOC_INFO_1A {
-                pDocName: doc_name.as_ptr(),
-                pOutputFile: null(), // NULL = 打印到打印机（非文件）
-                pDataType: data_type.as_ptr(),
+            // 构建 DOC_INFO_1W（Unicode 编码）
+            let doc_name = str_to_utf16("Flutter-Rust RAW Document");
+            let data_type = str_to_utf16("RAW");
+            let doc_info = DOC_INFO_1W {
+                pDocName: PCWSTR(doc_name.as_ptr()),
+                pOutputFile: PCWSTR::null(), // NULL = 打印到打印机（非文件）
+                pDataType: PCWSTR(data_type.as_ptr()),
             };
 
             // 开始打印文档（需检查返回值）
-            let success = StartDocPrinterA(h_printer, 1, &doc_info);
+            let success = StartDocPrinterW(h_printer, 1, &doc_info);
             if success == 0 {
                 return Err(PrinterError::WinApiError {
-                    func: "StartDocPrinterA",
+                    func: "StartDocPrinterW",
                     code: get_last_error(),
                 });
             }
